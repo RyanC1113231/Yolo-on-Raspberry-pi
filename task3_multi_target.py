@@ -1,9 +1,9 @@
 """
-任务3：多目标定位 + 智能加速减速转向
-硬件：树莓派4B + Pi Camera (picamera2) + 单目摄像头
-依赖安装：
+Task3：Multi-target-detection + Autonomous speed control
+硬件：Raspberry pi4B + Pi Camera (picamera2) 
+Installation：
     pip install ultralytics opencv-python numpy --break-system-packages
-    pip install filterpy --break-system-packages  # 卡尔曼滤波
+    pip install filterpy --break-system-packages  
     # SORT: git clone https://github.com/abewley/sort
 """
 
@@ -16,52 +16,44 @@ from typing import List, Tuple, Optional
 import time
 
 # ─────────────────────────────────────────────
-# 配置区
+# 1.Set up
 # ─────────────────────────────────────────────
 FRAME_WIDTH   = 640
 FRAME_HEIGHT  = 480
-FOCAL_LENGTH  = 600.0    # 需要相机标定后填入
-REAL_WIDTH    = 45.0     # 人肩宽(cm)，用于单目测距
-DANGER_DIST   = 80.0     # 危险距离(cm)，触发紧急停止
-SLOW_DIST     = 150.0    # 减速距离(cm)
-ROBOT_SPEED   = 30.0     # 机器人当前速度(cm/s)，后期从编码器读取
+FOCAL_LENGTH  = 600.0    # CHANGE ACCORDINGLY WITH YOUR CAMERA
+REAL_WIDTH    = 45.0     # Human width (cm)
+DANGER_DIST   = 80.0     # Threshold dangerous distance between robot and human(cm)
+SLOW_DIST     = 150.0    # Threshold slowing distance(cm)
+ROBOT_SPEED   = 30.0     # Robot's speed(cm/s)
 
 
-# ─────────────────────────────────────────────
-# 1. 目标数据结构
-# ─────────────────────────────────────────────
+
 @dataclass
 class Target:
-    id: int                    # 跟踪ID
+    id: int                    # tracking ID
     bbox: Tuple                # (x1, y1, x2, y2)
-    distance: float            # 距离(cm)
-    abs_velocity: float        # 目标绝对速度(cm/s) 正=靠近 负=远离
-    rel_velocity: float        # 相对速度 = abs_velocity - robot_speed
+    distance: float            # distance(cm)
+    abs_velocity: float        # target speed
+    rel_velocity: float        # relative speed = abs_velocity - robot_speed
     state: str                 # "static" / "approaching" / "same_dir" / "away"
-    center: Tuple              # 画面中心坐标
+    center: Tuple              # center 
 
 
 # ─────────────────────────────────────────────
-# 2. 单目测距
+# 2. Distance calculation
 # ─────────────────────────────────────────────
 def estimate_distance(bbox_width_px: float) -> float:
-    """
-    根据边界框宽度估算距离
-    distance = (真实宽度 × 焦距) / 像素宽度
-    """
+    
     if bbox_width_px < 1:
         return 9999.0
     return (REAL_WIDTH * FOCAL_LENGTH) / bbox_width_px
 
 
 # ─────────────────────────────────────────────
-# 3. 单目标卡尔曼滤波器
+# 3. Single target Kalman filter
 # ─────────────────────────────────────────────
 class TargetKalman:
-    """
-    状态向量: [距离, 速度]
-    每个跟踪目标独立一个滤波器
-    """
+    
     def __init__(self, init_dist: float):
         self.kf = KalmanFilter(dim_x=2, dim_z=1)
         dt = 0.05  # 假设20Hz采样
@@ -90,7 +82,7 @@ class TargetKalman:
 
 
 # ─────────────────────────────────────────────
-# 4. 多目标管理器
+# 4. MultiTargetTracker
 # ─────────────────────────────────────────────
 class MultiTargetTracker:
     def __init__(self):
@@ -174,7 +166,7 @@ class MultiTargetTracker:
 
 
 # ─────────────────────────────────────────────
-# 5. 运动决策模块
+# 5. Robot motion command
 # ─────────────────────────────────────────────
 @dataclass
 class MotionCommand:
@@ -239,13 +231,13 @@ def make_motion_decision(targets: List[Target]) -> MotionCommand:
 
 
 # ─────────────────────────────────────────────
-# 6. 可视化
+# 6. Target moving status
 # ─────────────────────────────────────────────
 STATE_COLORS = {
-    "static":      (0, 255, 255),   # 黄
-    "approaching": (0, 0, 255),     # 红
-    "same_dir":    (0, 255, 0),     # 绿
-    "away":        (128, 128, 128), # 灰
+    "static":      (0, 255, 255),   # yellow -> static
+    "approaching": (0, 0, 255),     # red -> approaching
+    "same_dir":    (0, 255, 0),     # green -> moving in same direction
+    "away":        (128, 128, 128), # grey -> moving away
 }
 
 def draw_targets(frame: np.ndarray, targets: List[Target],
@@ -314,7 +306,7 @@ class YOLODetector:
 
 
 # ─────────────────────────────────────────────
-# 8. Arduino通信（发送控制指令）
+# 8. Arduino motion command
 # ─────────────────────────────────────────────
 class ArduinoComm:
     def __init__(self, port: str = "/dev/ttyUSB0", baud: int = 9600):
@@ -336,7 +328,7 @@ class ArduinoComm:
 
 
 # ─────────────────────────────────────────────
-# 9. 主循环
+# 9. Main execution
 # ─────────────────────────────────────────────
 def main():
     print("初始化摄像头...")
